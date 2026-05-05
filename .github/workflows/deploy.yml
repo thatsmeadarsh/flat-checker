@@ -1,0 +1,54 @@
+name: Build & Deploy to Cloudflare Pages
+
+on:
+  # Run every Sunday at 2am IST (8:30pm Saturday UTC)
+  schedule:
+    - cron: "30 20 * * 0"
+  # Also run on every push to main
+  push:
+    branches: [main]
+  # Allow manual trigger from GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to commit updated projects_data.json back
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch latest KRERA data & build
+        # --fetch: scans KRERA API for new projects, geocodes, then builds
+        # On push (non-schedule) we skip the slow fetch to keep CI fast
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python3 build.py --fetch
+          else
+            python3 build.py
+          fi
+
+      - name: Commit updated projects_data.json (if changed)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add projects_data.json
+          git diff --cached --quiet || git commit -m "chore: weekly KRERA data refresh [skip ci]"
+          git push
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: pages deploy public --project-name=kochi-metro-flats --commit-dirty=true

@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+data/projects_live.json
+public/
+*.DS_Store
