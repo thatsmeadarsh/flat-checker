@@ -277,6 +277,124 @@ tbody td { padding: 8px 10px; vertical-align: middle; white-space: nowrap; }
 .ptag.p1 { background: rgba(91,110,245,0.15); color: #a5b4fc; }
 .ptag.p2 { background: rgba(244,63,94,0.15); color: #fda4af; }
 
+/* ── mobile ──────────────────────────────── */
+@media (max-width: 768px) {
+  body { font-size: 12px; }
+
+  header { padding: 10px 14px; gap: 8px; }
+  header h1 { font-size: 15px; }
+  .stats-bar { gap: 8px; margin-left: 0; width: 100%; justify-content: space-between; }
+  .stat .val { font-size: 16px; }
+
+  .phase-bar { padding: 7px 14px; gap: 8px; flex-wrap: nowrap; overflow-x: auto; }
+  .phase-btn { font-size: 11px; padding: 4px 10px; white-space: nowrap; }
+  .phase-badge { display: none; }
+
+  .fetch-bar { padding: 7px 14px; flex-wrap: wrap; }
+  .fetch-info { display: none; }
+
+  .controls {
+    padding: 8px 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
+  .controls > div { width: 100%; }
+  .controls select,
+  .controls input[type=text] { width: 100%; }
+  .controls .range-group { width: 100%; }
+  .controls .sort-group { grid-column: 1 / -1; }
+  .controls .btn { grid-column: 1 / -1; width: 100%; }
+  .controls label { display: block; margin-bottom: 2px; }
+
+  /* Sidebar becomes a full-height drawer */
+  .main { height: calc(100vh - var(--header-h, 220px)); position: relative; }
+
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 280px;
+    height: 100%;
+    z-index: 500;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.6);
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 499;
+  }
+  .sidebar-overlay.visible { display: block; }
+
+  .table-area { overflow-x: auto; padding: 10px; width: 100%; }
+
+  /* Sticky station toggle button */
+  .mobile-sidebar-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  /* Sidebar close button */
+  .sidebar-close {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px 6px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .sidebar-close-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 20px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 6px;
+  }
+  .sidebar-close-label { font-size: 12px; font-weight: 700; color: var(--text); }
+
+  /* Collapse filters */
+  .controls-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 6px 14px;
+    width: calc(100% - 28px);
+  }
+  .controls.collapsed { display: none; }
+}
+
+@media (min-width: 769px) {
+  .mobile-sidebar-btn { display: none; }
+  .controls-toggle { display: none; }
+  .sidebar-overlay { display: none !important; }
+  .sidebar-close { display: none; }
+}
+
 /* notification toast */
 .toast {
   position: fixed;
@@ -344,8 +462,11 @@ tbody td { padding: 8px 10px; vertical-align: middle; white-space: nowrap; }
   </div>
 </div>
 
+<!-- Mobile filter toggle -->
+<button class="controls-toggle" id="controlsToggle" onclick="toggleControls()">⚙ Filters <span id="controlsArrow">▼</span></button>
+
 <!-- Filter controls -->
-<div class="controls">
+<div class="controls" id="controlsPanel">
   <div>
     <label>Status</label>
     <select id="fStatus">
@@ -407,15 +528,24 @@ tbody td { padding: 8px 10px; vertical-align: middle; white-space: nowrap; }
   <button class="btn secondary" onclick="resetFilters()">Reset</button>
 </div>
 
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
 <div class="main">
-  <div class="sidebar">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-close">
+      <span class="sidebar-close-label">Metro Stations</span>
+      <button class="sidebar-close-btn" onclick="closeSidebar()">✕</button>
+    </div>
     <h3 id="sidebarPhaseLabel">Phase 1 Stations</h3>
     <div id="stationList"></div>
     <h3 style="margin-top:18px">Builders</h3>
     <div id="builderList"></div>
   </div>
   <div class="table-area">
-    <div class="result-info" id="resultInfo"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+      <button class="mobile-sidebar-btn" onclick="openSidebar()">☰ Stations &amp; Builders</button>
+      <div class="result-info" id="resultInfo" style="margin-bottom:0"></div>
+    </div>
     <table id="mainTable">
       <thead>
         <tr>
@@ -842,8 +972,16 @@ function render() {
   renderStats();
 }
 
-function setStation(s) { activeStation = s; activeBuilder = null; renderSidebar(); renderTable(); renderStats(); }
-function setBuilder(b) { activeBuilder = b; activeStation = null; renderSidebar(); renderTable(); renderStats(); }
+function setStation(s) {
+  activeStation = s; activeBuilder = null;
+  renderSidebar(); renderTable(); renderStats();
+  if (window.innerWidth <= 768) closeSidebar();
+}
+function setBuilder(b) {
+  activeBuilder = b; activeStation = null;
+  renderSidebar(); renderTable(); renderStats();
+  if (window.innerWidth <= 768) closeSidebar();
+}
 
 function populateBuilderDropdown() {
   const builders = [...new Set(PROJECTS.map(p => p.developer).filter(Boolean))].sort();
@@ -972,6 +1110,30 @@ document.querySelectorAll('thead th[data-col]').forEach(th => {
     renderTable();
   });
 });
+
+// ── mobile sidebar ────────────────────────────────────────────────────────────
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarOverlay').classList.add('visible');
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('visible');
+  document.body.style.overflow = '';
+}
+
+// ── mobile filter toggle ──────────────────────────────────────────────────────
+let filtersVisible = window.innerWidth > 768;
+function toggleControls() {
+  filtersVisible = !filtersVisible;
+  document.getElementById('controlsPanel').classList.toggle('collapsed', !filtersVisible);
+  document.getElementById('controlsArrow').textContent = filtersVisible ? '▲' : '▼';
+}
+// On mobile, start collapsed
+if (window.innerWidth <= 768) {
+  document.getElementById('controlsPanel').classList.add('collapsed');
+}
 
 // ── start ─────────────────────────────────────────────────────────────────────
 init();
