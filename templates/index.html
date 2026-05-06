@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kochi Metro Flat Finder</title>
+<title>Kerala Metro — Flat Finder</title>
 <style>
 :root {
   --bg: #0f1117;
@@ -395,6 +395,15 @@ tbody td { padding: 8px 10px; vertical-align: middle; white-space: nowrap; }
   .sidebar-close { display: none; }
 }
 
+/* ── city tabs ───────────────────────────── */
+.city-tabs { display: flex; gap: 6px; align-items: center; }
+.city-tab { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; white-space: nowrap; }
+.city-tab:hover { border-color: var(--accent); color: var(--text); }
+.city-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tvm-disclaimer { background: rgba(245,158,11,0.07); border-bottom: 1px solid rgba(245,158,11,0.2); padding: 6px 24px; font-size: 11px; color: var(--muted); display: none; }
+.tvm-disclaimer.visible { display: block; }
+.tvm-disclaimer strong { color: var(--warn); }
+
 /* notification toast */
 .toast {
   position: fixed;
@@ -422,11 +431,18 @@ tbody td { padding: 8px 10px; vertical-align: middle; white-space: nowrap; }
 
 <header>
   <div>
-    <h1>Kochi Metro Corridor — Flat Finder</h1>
-    <div class="subtitle">KRERA-registered projects along metro corridors &nbsp;|&nbsp; Data as of May 2026</div>
+    <h1>Kerala Metro — Flat Finder</h1>
+    <div class="subtitle" id="corridorSubtitle">KRERA-registered projects along metro corridors &nbsp;|&nbsp; Data as of May 2026</div>
+  </div>
+  <div class="city-tabs">
+    <button class="city-tab active" id="tabKochi" onclick="setCity('Kochi')">Kochi Metro</button>
+    <button class="city-tab" id="tabTrivandrum" onclick="setCity('Trivandrum')">Trivandrum Metro</button>
   </div>
   <div class="stats-bar" id="statsBar"></div>
 </header>
+<div class="tvm-disclaimer" id="tvmDisclaimer">
+  <strong>⚠ Proposed metro:</strong> Trivandrum Metro Phase 1 is in DPR/approval stage — not yet under construction. Walk distances are geometry estimates. Prices and yields are area benchmarks, not transaction data. Verify independently before any investment decision.
+</div>
 
 <!-- Phase switcher -->
 <div class="phase-bar">
@@ -620,9 +636,24 @@ const PHASE2_STATIONS_JS = [
   {name:"SEZ",lat:10.0178,lng:76.4067,phase:2,status:"Under Construction"},
 ];
 
+// ── TVM station order ─────────────────────────────────────────────────────────
+const TVM_STATIONS_ORDER = [
+  "Technocity","Pallipuram","Kaniyapuram","Kazhakuttam","Technopark",
+  "Kariavattom","Gurumandiram","Pangapara","Sreekaryam","Ulloor",
+  "Kesavadasapuram","Pattom","Plamoodu","Palayam","Secretariat",
+  "Thampanoor","Killipalam","Karamana","Kaimanam","Pappanamcode",
+  "Karakamandapam","Vellayani","Nemom","Pravachambalam","Pallichal",
+];
+
+const CITY_SUBTITLES = {
+  Kochi: 'KRERA-registered projects along metro corridors &nbsp;|&nbsp; Data as of May 2026',
+  Trivandrum: 'Pappanamcode → Pallipuram &nbsp;|&nbsp; 25 stations &nbsp;|&nbsp; <strong style="color:var(--warn)">Proposed metro — DPR stage</strong> &nbsp;|&nbsp; KRERA data May 2026',
+};
+
 // ── state ─────────────────────────────────────────────────────────────────────
 let PROJECTS = [];
 let STATIONS = { phase1: PHASE1_STATIONS_JS, phase2: PHASE2_STATIONS_JS };
+let activeCity = 'Kochi';
 let activePhase = 1;   // 0 = all, 1, 2
 let activeStation = null;
 let activeBuilder = null;
@@ -672,6 +703,25 @@ async function init() {
   }
 }
 
+// ── city switching ────────────────────────────────────────────────────────────
+function setCity(city) {
+  activeCity = city;
+  activeStation = null;
+  activeBuilder = null;
+  activePhase = 1;
+  document.getElementById('tabKochi').classList.toggle('active', city === 'Kochi');
+  document.getElementById('tabTrivandrum').classList.toggle('active', city === 'Trivandrum');
+  document.getElementById('corridorSubtitle').innerHTML = CITY_SUBTITLES[city];
+  const disc = document.getElementById('tvmDisclaimer');
+  if (disc) disc.classList.toggle('visible', city === 'Trivandrum');
+  // Show/hide phase bar (only relevant for Kochi)
+  document.querySelector('.phase-bar').style.display = city === 'Trivandrum' ? 'none' : '';
+  document.querySelector('.fetch-bar').style.display = city === 'Trivandrum' ? 'none' : '';
+  document.getElementById('sidebarPhaseLabel').textContent = city === 'Trivandrum' ? 'TVM Stations' : 'Phase 1 Stations';
+  populateBuilderDropdown();
+  render();
+}
+
 // ── phase switching ───────────────────────────────────────────────────────────
 function setPhase(ph) {
   activePhase = ph;
@@ -696,8 +746,10 @@ function getFiltered() {
   const search  = document.getElementById('fSearch').value.toLowerCase();
 
   return PROJECTS.filter(p => {
-    // Phase filter
-    if (activePhase !== 0 && p.phase !== activePhase) return false;
+    // City filter
+    if ((p.city || 'Kochi') !== activeCity) return false;
+    // Phase filter (only for Kochi)
+    if (activeCity === 'Kochi' && activePhase !== 0 && p.phase !== activePhase) return false;
     // Status
     if (status && p.status !== status) return false;
     // 7-year rule for completed
@@ -862,65 +914,85 @@ function toggleDetail(id) {
 }
 
 function renderSidebar() {
-  const ph1Names = new Set(STATIONS.phase1?.map(s => s.name) || []);
-  const ph2Names = new Set(STATIONS.phase2?.map(s => s.name) || []);
+  const cityProjects = PROJECTS.filter(p => (p.city || 'Kochi') === activeCity);
 
-  // Build station list based on active phase
-  let stationsToShow;
-  if (activePhase === 0) {
-    stationsToShow = [
-      ...(STATIONS.phase1 || []),
-      ...(STATIONS.phase2 || []).filter(s => s.name !== 'Palarivattom')
-    ];
-  } else if (activePhase === 1) {
-    stationsToShow = STATIONS.phase1 || [];
-  } else {
-    stationsToShow = STATIONS.phase2 || [];
-  }
-
-  const projectsInPhase = PROJECTS.filter(p => activePhase === 0 || p.phase === activePhase);
   const stationCounts = {};
-  projectsInPhase.forEach(p => {
+  cityProjects.forEach(p => {
     if (p.nearest_metro_station) stationCounts[p.nearest_metro_station] = (stationCounts[p.nearest_metro_station] || 0) + 1;
   });
 
   const sl = document.getElementById('stationList');
-  const phClass = activePhase === 2 ? 'ph2' : 'ph1';
-  sl.innerHTML = `<div class="metro-line ${phClass}">
-    <div class="station-item ${!activeStation ? 'active' : ''}" onclick="setStation(null)">
-      <span class="s-name" style="font-style:italic">All Stations</span>
-      <span class="s-count">${projectsInPhase.length}</span>
-    </div>
-  </div>`;
 
-  // Group by phase for "all" view
-  if (activePhase === 0) {
-    // Phase 1 group
-    const g1 = document.createElement('div');
-    g1.innerHTML = '<div style="font-size:10px;color:var(--ph1);font-weight:700;margin:8px 0 4px;letter-spacing:.5px">PHASE 1 — OPERATIONAL</div>';
-    const ml1 = document.createElement('div');
-    ml1.className = 'metro-line ph1';
-    (STATIONS.phase1 || []).forEach(s => appendStationItem(ml1, s, stationCounts));
-    g1.appendChild(ml1);
-    sl.appendChild(g1);
-
-    const g2 = document.createElement('div');
-    g2.innerHTML = '<div style="font-size:10px;color:var(--ph2);font-weight:700;margin:12px 0 4px;letter-spacing:.5px">PHASE 2 — UNDER CONSTRUCTION</div>';
-    const ml2 = document.createElement('div');
-    ml2.className = 'metro-line ph2';
-    (STATIONS.phase2 || []).filter(s => s.name !== 'Palarivattom').forEach(s => appendStationItem(ml2, s, stationCounts));
-    g2.appendChild(ml2);
-    sl.appendChild(g2);
-  } else {
+  if (activeCity === 'Trivandrum') {
+    sl.innerHTML = `<div class="metro-line ph1">
+      <div class="station-item ${!activeStation ? 'active' : ''}" onclick="setStation(null)">
+        <span class="s-name" style="font-style:italic">All Stations</span>
+        <span class="s-count">${cityProjects.length}</span>
+      </div>
+    </div>`;
     const ml = document.createElement('div');
-    ml.className = `metro-line ${phClass}`;
-    stationsToShow.forEach(s => appendStationItem(ml, s, stationCounts));
+    ml.className = 'metro-line ph1';
+    TVM_STATIONS_ORDER.forEach(name => {
+      if (!stationCounts[name]) return;
+      const item = document.createElement('div');
+      item.className = `station-item${activeStation === name ? ' active' : ''}`;
+      item.innerHTML = `<span class="s-name">${name}</span><span class="s-count">${stationCounts[name]}</span>`;
+      item.onclick = () => setStation(name);
+      ml.appendChild(item);
+    });
     sl.appendChild(ml);
+  } else {
+    // Kochi — phase-aware
+    let stationsToShow;
+    if (activePhase === 0) {
+      stationsToShow = [
+        ...(STATIONS.phase1 || []),
+        ...(STATIONS.phase2 || []).filter(s => s.name !== 'Palarivattom')
+      ];
+    } else if (activePhase === 1) {
+      stationsToShow = STATIONS.phase1 || [];
+    } else {
+      stationsToShow = STATIONS.phase2 || [];
+    }
+
+    const projectsInPhase = cityProjects.filter(p => activePhase === 0 || p.phase === activePhase);
+    const phClass = activePhase === 2 ? 'ph2' : 'ph1';
+    sl.innerHTML = `<div class="metro-line ${phClass}">
+      <div class="station-item ${!activeStation ? 'active' : ''}" onclick="setStation(null)">
+        <span class="s-name" style="font-style:italic">All Stations</span>
+        <span class="s-count">${projectsInPhase.length}</span>
+      </div>
+    </div>`;
+
+    if (activePhase === 0) {
+      const g1 = document.createElement('div');
+      g1.innerHTML = '<div style="font-size:10px;color:var(--ph1);font-weight:700;margin:8px 0 4px;letter-spacing:.5px">PHASE 1 — OPERATIONAL</div>';
+      const ml1 = document.createElement('div');
+      ml1.className = 'metro-line ph1';
+      (STATIONS.phase1 || []).forEach(s => appendStationItem(ml1, s, stationCounts));
+      g1.appendChild(ml1);
+      sl.appendChild(g1);
+
+      const g2 = document.createElement('div');
+      g2.innerHTML = '<div style="font-size:10px;color:var(--ph2);font-weight:700;margin:12px 0 4px;letter-spacing:.5px">PHASE 2 — UNDER CONSTRUCTION</div>';
+      const ml2 = document.createElement('div');
+      ml2.className = 'metro-line ph2';
+      (STATIONS.phase2 || []).filter(s => s.name !== 'Palarivattom').forEach(s => appendStationItem(ml2, s, stationCounts));
+      g2.appendChild(ml2);
+      sl.appendChild(g2);
+    } else {
+      const ml = document.createElement('div');
+      ml.className = `metro-line ${phClass}`;
+      stationsToShow.forEach(s => appendStationItem(ml, s, stationCounts));
+      sl.appendChild(ml);
+    }
   }
 
   // Builders
-  const filteredProjects = PROJECTS.filter(p => activePhase === 0 || p.phase === activePhase);
-  const builders = [...new Set(filteredProjects.map(p => p.developer).filter(Boolean))].sort();
+  const filteredForBuilders = activeCity === 'Trivandrum'
+    ? cityProjects
+    : cityProjects.filter(p => activePhase === 0 || p.phase === activePhase);
+  const builders = [...new Set(filteredForBuilders.map(p => p.developer).filter(Boolean))].sort();
   const bl = document.getElementById('builderList');
   bl.innerHTML = `<div class="legend-item ${!activeBuilder ? 'active' : ''}" onclick="setBuilder(null)">
     <div class="legend-dot" style="background:var(--accent)"></div>
@@ -928,7 +1000,7 @@ function renderSidebar() {
   </div>`;
   const colors = ['#5b6ef5','#22d3a5','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#84cc16','#f43f5e','#fb923c','#a78bfa'];
   builders.forEach((b, i) => {
-    const cnt = filteredProjects.filter(p => p.developer === b).length;
+    const cnt = filteredForBuilders.filter(p => p.developer === b).length;
     const item = document.createElement('div');
     item.className = `legend-item${activeBuilder === b ? ' active' : ''}`;
     item.innerHTML = `<div class="legend-dot" style="background:${colors[i % colors.length]}"></div>
@@ -984,7 +1056,8 @@ function setBuilder(b) {
 }
 
 function populateBuilderDropdown() {
-  const builders = [...new Set(PROJECTS.map(p => p.developer).filter(Boolean))].sort();
+  const cityProjects = PROJECTS.filter(p => (p.city || 'Kochi') === activeCity);
+  const builders = [...new Set(cityProjects.map(p => p.developer).filter(Boolean))].sort();
   const sel = document.getElementById('fBuilder');
   sel.innerHTML = '<option value="">All Builders</option>';
   builders.forEach(b => {

@@ -10,11 +10,12 @@ Also does a lightweight KRERA refresh when called with --fetch:
 import json, sys, re, math, time, urllib.request, urllib.parse
 from pathlib import Path
 
-BASE     = Path(__file__).parent
-DATA_IN  = BASE / "projects_data.json"
-TMPL     = BASE / "templates" / "index.html"
-OUT_DIR  = BASE / "public"
-OUT_FILE = OUT_DIR / "index.html"
+BASE        = Path(__file__).parent
+DATA_IN     = BASE / "projects_data.json"
+DATA_TVM    = BASE / "tvm_projects_data.json"
+TMPL        = BASE / "templates" / "index.html"
+OUT_DIR     = BASE / "public"
+OUT_FILE    = OUT_DIR / "index.html"
 
 # ── phase 2 station set (for phase-assignment logic) ─────────────────────────
 PH2_STATIONS = {
@@ -186,6 +187,16 @@ def assign_station_and_phase(proj):
 def load_projects():
     return json.loads(DATA_IN.read_text(encoding="utf-8"))
 
+def load_tvm_projects():
+    if not DATA_TVM.exists():
+        return []
+    projects = json.loads(DATA_TVM.read_text(encoding="utf-8"))
+    for p in projects:
+        p["city"] = "Trivandrum"
+        if "phase" not in p or p["phase"] is None:
+            p["phase"] = 1
+    return projects
+
 def save_projects(projects):
     DATA_IN.write_text(json.dumps(projects, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -215,16 +226,20 @@ def build(projects=None):
     if projects is None:
         projects = load_projects()
 
-    # Ensure phase field exists for all projects
+    # Ensure phase and city fields exist for Kochi projects
     for p in projects:
+        p.setdefault("city", "Kochi")
         if "phase" not in p:
             station = p.get("nearest_metro_station","")
             p["phase"] = 2 if (station in PH2_STATIONS and station != "Palarivattom") else 1
 
+    tvm_projects = load_tvm_projects()
+    all_projects = projects + tvm_projects
+
     tmpl = TMPL.read_text(encoding="utf-8")
 
     # Inject projects as a JS constant in the template
-    js_data = json.dumps(projects, ensure_ascii=False).replace("</script>", "<\\/script>")
+    js_data = json.dumps(all_projects, ensure_ascii=False).replace("</script>", "<\\/script>")
     tmpl = re.sub(
         r"// __PROJECTS_DATA__",
         f"const INITIAL_PROJECTS = {js_data};",
@@ -233,7 +248,7 @@ def build(projects=None):
 
     OUT_DIR.mkdir(exist_ok=True)
     OUT_FILE.write_text(tmpl, encoding="utf-8")
-    print(f"Built {OUT_FILE} ({len(projects)} projects, {OUT_FILE.stat().st_size // 1024}KB)")
+    print(f"Built {OUT_FILE} ({len(projects)} Kochi + {len(tvm_projects)} TVM = {len(all_projects)} total, {OUT_FILE.stat().st_size // 1024}KB)")
 
 if __name__ == "__main__":
     if "--fetch" in sys.argv:
